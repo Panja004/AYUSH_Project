@@ -3,7 +3,7 @@ const path = require("path");
 const Document = require("../models/Document");
 const DocumentRequirement = require("../models/DocumentRequirement");
 const Application = require("../models/Application");
-const { uploadToLocal, resolveFileUrlToPath } = require("../utils/storage");
+const { uploadToLocal, resolveFileUrlToPath, saveBase64Image } = require("../utils/storage");
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 async function uploadDocumentHandler(req, res) {
@@ -73,6 +73,42 @@ async function uploadDocumentHandler(req, res) {
         }
         if (data.extracted_fields && typeof data.extracted_fields === "object") {
           doc.extracted_fields = data.extracted_fields;
+        }
+
+        // Save page images if OCR returns them (as base64 data URLs or raw base64)
+        // Supports keys: page_images | pages | images
+        const pageImages = Array.isArray(data.page_images)
+          ? data.page_images
+          : Array.isArray(data.pages)
+          ? data.pages
+          : Array.isArray(data.images)
+          ? data.images
+          : [];
+        if (pageImages.length > 0) {
+          const saved = [];
+          for (let i = 0; i < pageImages.length; i++) {
+            const img = pageImages[i];
+            try {
+              const url = await saveBase64Image(img, `${path.parse(file.originalname).name}-p${i + 1}.png`);
+              saved.push({ url, page: i + 1 });
+            } catch (_) {}
+          }
+          if (saved.length) {
+            doc.page_images = saved;
+            doc.page_count = saved.length;
+          }
+        }
+
+        // If OCR includes structured application fields, merge into the related Application
+        if (doc.application_id && data.application_fields && typeof data.application_fields === "object") {
+          try {
+            const app = await Application.findById(doc.application_id);
+            if (app) {
+              const existing = app.application_data && typeof app.application_data === "object" ? app.application_data : {};
+              app.application_data = { ...existing, ...data.application_fields };
+              await app.save();
+            }
+          } catch (_) {}
         }
         doc.ocr_status = "done";
         await doc.save();

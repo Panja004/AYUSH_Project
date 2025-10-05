@@ -42,3 +42,33 @@ function resolveFileUrlToPath(fileUrl) {
 }
 
 module.exports.resolveFileUrlToPath = resolveFileUrlToPath;
+
+// Save a base64 image (data URL or raw base64) into uploads and return public URL
+async function saveBase64Image(base64Input, suggestedName = "image.png") {
+  const dateDir = new Date().toISOString().slice(0, 10);
+  const destDir = path.join(uploadDir, dateDir);
+  await ensureUploadDir(destDir);
+
+  let mime = "image/png";
+  let base64 = base64Input;
+  const dataUrlMatch = /^data:(.+);base64,(.*)$/.exec(base64Input);
+  if (dataUrlMatch) {
+    mime = dataUrlMatch[1] || mime;
+    base64 = dataUrlMatch[2] || "";
+  }
+
+  const extFromMime = mime.split("/")[1] || "png";
+  const safeName = `${Date.now()}-${suggestedName.replace(/\s+/g, "_")}`;
+  const filename = safeName.includes(".") ? safeName : `${safeName}.${extFromMime}`;
+  const destPath = path.join(destDir, filename);
+
+  const buffer = Buffer.from(base64, "base64");
+  await fs.writeFile(destPath, buffer);
+
+  const parts = destPath.split(path.sep);
+  const uploadsIndex = parts.lastIndexOf("uploads");
+  const publicPath = "/" + parts.slice(uploadsIndex).join("/");
+  return publicPath.replace(/\\/g, "/");
+}
+
+module.exports.saveBase64Image = saveBase64Image;

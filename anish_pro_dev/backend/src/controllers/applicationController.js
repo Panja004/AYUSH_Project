@@ -2,6 +2,7 @@
 const Application = require("../models/Application");
 const Startup = require("../models/Startup"); // <- needed to check ownership
 const DocumentRequirement = require("../models/DocumentRequirement");
+const User = require("../models/User");
 
 async function createApplication(req, res) {
   try {
@@ -99,4 +100,40 @@ async function getApplication(req, res) {
   }
 }
 
-module.exports = { createApplication, submitApplication, getApplication };
+// List applications for govt officials/admins
+async function listApplicationsForOfficials(req, res) {
+  try {
+    const isAdmin = req.user.role === "admin";
+    const isGov = req.user.role === "gov_official" && req.user.role_verified === true;
+    if (!isAdmin && !isGov) {
+      return res.status(403).json({ message: "Forbidden: only verified officials/admin" });
+    }
+
+    const { status, sector, application_type, q } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (sector) filter.sector = sector;
+    if (application_type) filter.application_type = application_type;
+
+    // simple text search across some fields
+    if (q) filter.$or = [
+      { reviewer_comment: new RegExp(q, "i") },
+      { "application_data.name": new RegExp(q, "i") },
+      { "application_data.startup_name": new RegExp(q, "i") },
+    ];
+
+    const apps = await Application
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .populate({ path: "documents", select: "doc_category_declared doc_category_detected verified_status page_images page_count" })
+      .populate({ path: "startup_id", select: "name founder_name email phone_number" })
+      .lean();
+
+    return res.json({ items: apps });
+  } catch (err) {
+    console.error("listApplicationsForOfficials error:", err);
+    return res.status(500).json({ message: "Failed to list applications", error: err.message });
+  }
+}
+
+module.exports = { createApplication, submitApplication, getApplication, listApplicationsForOfficials };

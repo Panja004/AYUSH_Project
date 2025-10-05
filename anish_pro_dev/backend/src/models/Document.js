@@ -70,6 +70,17 @@ const DocumentSchema = new mongoose.Schema(
 
     versions: [DocumentVersionSchema],
     page_count: { type: Number },
+    page_images: [
+      new mongoose.Schema(
+        {
+          url: { type: String, required: true },
+          page: { type: Number },
+          width: { type: Number },
+          height: { type: Number },
+        },
+        { _id: false }
+      ),
+    ],
     checksum: { type: String },
     mismatch_flag: { type: Boolean, default: false },
     meta: { type: mongoose.Schema.Types.Mixed },
